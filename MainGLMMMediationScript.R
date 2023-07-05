@@ -68,8 +68,8 @@ ggplot(prev_by_trt_ssn) +
 
 ## Supplemental figure
 prev_by_trt_ssn$season2 <- factor(prev_by_trt_ssn$season,
-                        levels = c("dat", "Summer", "Fall", "April"),
-                        labels = c("dat '21", "Summer '21", "Fall '21", "dat '22"))
+                        levels = c("Spring", "Summer", "Fall", "April"),
+                        labels = c("Spring '21", "Summer '21", "Fall '21", "Spring '22"))
 
 prev_by_trt_ssn$factorial <- factor(prev_by_trt_ssn$factorial,
                           levels = c("SE", "SN", "PE", "PN"),
@@ -150,8 +150,8 @@ dat$factorial <- factor(dat$factorial, levels = c("SE", "SN", "PE", "PN"))
 
 # Set April to season (dat)
 dat$season2 <- dat$season
-dat$season2[dat$season == "April"] <- "dat"
-dat$season <- factor(dat$season, levels = c("dat", "Summer", "Fall", "April"))
+dat$season2[dat$season == "April"] <- "Spring"
+dat$season <- factor(dat$season, levels = c("Spring", "Summer", "Fall", "April"))
 
 ##### Establish variables for sensitivity analyses -- edit down below #####
 
@@ -167,7 +167,6 @@ dat$positive_4of4 <- as.numeric(dat$Ct_detects >= 4)
 ##############################################
 #### EDIT HERE FOR SENSITIVITY ANALYSES ######
 dat_orig <- dat
-dat <- dat_orig ## reset
 
 ## Options for sensitivity analysis - comment out for main analysis
 # dat <- dat %>% subset(active_exclosure_repeats != 1)
@@ -175,6 +174,8 @@ dat <- dat_orig ## reset
 # dat$positive <- dat$positive_1of4
 # dat$positive <- dat$positive_2of4
 # dat$positive <- dat$positive_4of4
+
+dat <- dat_orig ## reset
 
 ##############################################
 
