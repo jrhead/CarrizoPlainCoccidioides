@@ -447,9 +447,9 @@ for (rep in 2:ncopies){
 }
 
 plots <- unique(paste0(dat_full$plot)) # get unique Carrizo plots
-nboot <- 10 # number of bootstrap iterations
+nboot <- 1000 # number of bootstrap iterations
 
-# a function to predict Y's
+# a function to predict Y's -- do need to repeat from above
 get_y <- function(Xvar,Mvar, binom = T){ 
 
   # Recreate dataset for prediction
@@ -490,7 +490,7 @@ get_m <- function(Xvar, binom = F){
 
   pvar1 <- sqrt(var(as.vector(fixef(E.M) %*% t(getME(E.M,"X")))))
 
-    # Sample from normal distribution, with mean as given and sd as found
+  # Sample from normal distribution, with mean as given and sd as found
   vals <- pmax(rnorm(n, mean = pred_df$M, sd = pvar1), 0) 
   
   # Sample from binomial distribution with prob of success equal to the mean probability
