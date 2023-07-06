@@ -12,7 +12,7 @@
 
 package_list <-c("ggplot2", "dplyr", "paletteer", "mice", "lme4", 
                  "stargazer", "table1", "stringr", "doParallel", "foreach", 
-                 "here", "weathermetrics")
+                 "here", "weathermetrics", "cowplot")
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(package_list, character.only=TRUE)
 
@@ -89,6 +89,7 @@ ggplot(prev_by_trt_ssn) +
   scale_x_discrete(labels = function(x) str_wrap(x, width = 10))
 
 #ggsave("PercentSamples_bySeason.jpg", width = 12, height = 7)
+
 
 #######################################################
 ## PART II. MULTIPLE IMPUTATION OF MISSING VARIABLES ##
@@ -203,13 +204,13 @@ dat <- dat_orig ## reset
 ##############################################
 
 # Make a GLMM, adjusting for various factors
-mod_unadj_noint <-  glmer(positive ~ season + 
+mod_unadj_noint <-  glmer(positive ~ season + site + 
                             exclosure + treatment + (1|plot_num/cluster_pair), 
                           data = dat, family = "binomial")
 
 summary(mod_unadj_noint)
 
-mod_adj_noint <- glmer(positive ~ vwc_imp + season +
+mod_adj_noint <- glmer(positive ~ vwc_imp + season + site + 
                          exclosure + treatment + (1|plot_num/cluster_pair), 
                        data = dat, family = "binomial")
 
@@ -613,3 +614,101 @@ MA_res
 quantile(res[,3]/(res[,3] + res[,4])*100, probs = c(0.025, 0.5, 0.975), na.rm = T)
 100-quantile(res[,3]/(res[,3] + res[,4])*100, probs = c(0.025, 0.5, 0.975), na.rm = T)
 
+
+####################################################
+#### SUPPLEMENT: CLUSTERING OF POSITIVE SAMPLES ####
+####################################################
+clusters <- dat %>% 
+  group_by(cluster, season) %>% 
+  summarize(tot_pos = sum(positive)) %>%
+  mutate(factorial = substr(cluster, 4,5))
+
+## simulate random distribution of samples ##
+PE_rand <- rbinom(n = 10000, size = 5, prob = 0.197)
+PN_rand <- rbinom(n = 10000, size = 5, prob = 0.285)
+SE_rand <- rbinom(n = 10000, size = 5, prob = 0.035)
+SN_rand <- rbinom(n = 10000, size = 5, prob = 0.005)
+
+# Plot random distribution vs. observed
+PE <- ggplot(clusters %>% subset(factorial == "PE")) +
+  geom_histogram(aes(x = tot_pos, y = ..density.., fill = "observed", col = "observed"), 
+                 alpha = 0.3, bins = 6) +
+  geom_histogram(data = data.frame(PE_rand), aes(x = PE_rand, y = ..density..,fill = "random", col = "random"), 
+                 alpha = 0.3, bins = 6) +
+  theme_bw() +
+  xlab("Samples per cluster of five positive") + ylab("Density") +
+  scale_fill_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
+  scale_color_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
+  guides(color = F, fill = F) +
+  ggtitle("Burrow + no rodents")
+
+PN <- ggplot(clusters %>% subset(factorial == "PN")) +
+  geom_histogram(aes(x = tot_pos, y = ..density.., fill = "observed", col = "observed"), 
+                 alpha = 0.3, bins = 6) +
+  geom_histogram(data = data.frame(PN_rand), aes(x = PN_rand, y = ..density..,fill = "random", col = "random"), 
+                 alpha = 0.3, bins = 6) +
+  theme_bw() +
+  xlab("Samples per cluster of five positive") + ylab("Density") +
+  scale_fill_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
+  scale_color_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
+  guides(color = F) +
+  ggtitle("Burrow + rodents")
+
+SE <- ggplot(clusters %>% subset(factorial == "SE")) +
+  geom_histogram(aes(x = tot_pos, y = ..density.., fill = "observed", col = "observed"), 
+                 alpha = 0.3, bins = 4) +
+  geom_histogram(data = data.frame(SE_rand), aes(x = SE_rand, y = ..density..,fill = "random", col = "random"), 
+                 alpha = 0.3, bins = 4) +
+  xlim(c(0,3)) + scale_x_continuous(breaks = c(0,1,2,3)) +
+  theme_bw() +
+  xlab("Samples per cluster of five positive") + ylab("Density") +
+  scale_fill_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
+  scale_color_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
+  guides(color = F, fill = F) +
+  ggtitle("Surface + no rodents")
+
+SN <- ggplot(clusters %>% subset(factorial == "SN")) +
+  geom_histogram(aes(x = tot_pos, y = ..density.., fill = "observed", col = "observed"), 
+                 alpha = 0.3, bins = 4) +
+  geom_histogram(data = data.frame(SN_rand), aes(x = SN_rand, y = ..density..,fill = "random", col = "random"), 
+                 alpha = 0.3, bins = 4) +
+  xlim(c(0,3)) + scale_x_continuous(breaks = c(0,1,2,3)) +
+  theme_bw() +
+  xlab("Samples per cluster of five positive") + ylab("Density") +
+  scale_fill_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
+  scale_color_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
+  guides(color = F) +
+  ggtitle("Surface + rodents")
+
+ggdraw() +
+  draw_plot(PE, x = 0, y = 0.5, width = 0.45, height = 0.5) +
+  draw_plot(PN, x = 0.45, y = 0.5, width = 0.55, height = 0.5) +
+  draw_plot(SE, x = 0, y = 0, width = 0.45, height = 0.5) +
+  draw_plot(SN, x = 0.45, y = 0, width = 0.55, height = 0.5)
+
+# ggsave("SupplementalClusteringFigure.jpg",
+#        dpi = 600, width = 10, height = 8)
+
+## Examine probabilities ##
+
+# probability that there will be 4 or 5 positive samples
+pbinom(q = 3, size = 5, prob = 0.285, lower.tail = F)
+# observed prevalence of 4 or 5 positive samples
+mean(clusters$tot_pos[clusters$factorial == "PN"] > 3, na.rm = T)
+
+# probability that there will be 4 or 5 positive samples
+pbinom(q = 3, size = 5, prob = 0.197, lower.tail = F)
+# observed prevalence of 4 or 5 positive samples
+mean(clusters$tot_pos[clusters$factorial == "PE"] > 3, na.rm = T)
+
+# probability that there will be 2 + positive samples
+pbinom(q = 1, size = 5, prob = 0.035, lower.tail = F)
+# observed prevalence of 4 or 5 positive samples
+mean(clusters$tot_pos[clusters$factorial == "SN"] > 1, na.rm = T)
+
+# probability that there will be 2 + positive samples
+pbinom(q = 1, size = 5, prob = 0.005, lower.tail = F)
+# observed prevalence of 4 or 5 positive samples
+mean(clusters$tot_pos[clusters$factorial == "SE"] > 1, na.rm = T)
+
+####################################################
