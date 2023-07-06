@@ -12,7 +12,7 @@
 
 package_list <-c("ggplot2", "dplyr", "paletteer", "mice", "lme4", 
                  "stargazer", "table1", "stringr", "doParallel", "foreach", 
-                 "here")
+                 "here", "weathermetrics")
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(package_list, character.only=TRUE)
 
@@ -127,10 +127,12 @@ mean(dat$vwc_imp)
 sd(dat$vwc_imp)
 range(dat$vwc_imp)
 
-mean(dat$soil_temp)
-sd(dat$soil_temp)
-range(dat$soil_temp)
-tail(sort(dat$soil_temp))
+# convert farenheit to celsius
+dat$soil_tempC <- fahrenheit.to.celsius(dat$soil_temp)
+range(dat$soil_tempC)
+dat$soil_tempC[dat$soil_tempC == 337.78] <- NA # not believable
+mean(dat$soil_tempC, na.rm = T)
+sd(dat$soil_tempC, na.rm = T)
 
 mean(dat$veg_level, na.rm = T)
 sd(dat$veg_level, na.rm = T)
@@ -240,6 +242,7 @@ mod_vwc <-lmer(vwc_imp ~ season +
 summary(mod_vwc)
 confint(mod_vwc)
 
+
 # ordinal soil level
 mod_veg <-lmer(veg_level ~ season + 
                    exclosure + treatment + (1|plot_num/cluster_pair), 
@@ -249,12 +252,25 @@ summary(mod_veg)
 confint(mod_veg)
 
 # soil temperature
-mod_tmp <- lmer(soil_temp ~ season + 
+mod_tmp <- lmer(soil_tempC~ season + 
                    exclosure + treatment + (1|plot_num/cluster_pair), 
                  data = dat)
 
 summary(mod_tmp)
 confint(mod_tmp)
+
+# Summarize all values
+dat %>% group_by(season2, factorial) %>% 
+  summarize(mean_vwc = mean(vwc_imp),
+            mean_temp = mean(soil_temp),
+            mean_veg = mean(veg_level, na.rm = T))
+
+
+sc_table <- table1( ~ vwc_imp + soil_tempC + veg_level | season2 * factorial ,
+                  data = dat)
+
+sc_table
+
 
 #################################################
 ##  PART IVA. MEDIATION ANALYSIS               ##
