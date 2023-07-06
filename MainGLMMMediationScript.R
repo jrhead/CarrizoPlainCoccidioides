@@ -141,6 +141,25 @@ dat %>% group_by(treatment, exclosure) %>% summarize(mean(vwc,na.rm = T))
 dat %>% group_by(treatment, exclosure) %>% summarize(mean(vwc_imp,na.rm = T))
 missing1 %>% group_by(treatment, exclosure) %>% summarize(mean(vwc,na.rm = T))
 
+# Supplemental figure: boxplot of soil moisture
+
+dat$season2 <- factor(dat$season,
+                      levels = c("Spring", "Summer", "Fall", "April"),
+                      labels = c("Spring '21", "Summer '21", "Fall '21", "Spring '22"))
+
+
+exc.labs <- c("Exclosure", "Non-exclosure")
+names(exc.labs) <- c("E", "N")
+
+ggplot(dat) + 
+  geom_boxplot(aes(x = season2, y = vwc_imp, fill = treatmentX)) + 
+  facet_wrap(~exclosureX, labeller = labeller(exclosureX = exc.labs)) +
+  xlab("") + ylab("Volumetric water content (%)") + theme_bw() +
+  theme(legend.position = "top") +
+  scale_fill_brewer("Burrow", palette = "Paired", labels = c("Yes", "No"))
+
+#ggsave(file = "MoistureComparison_all_sns.jpg", dpi = 250, width = 8, height = 5)
+
 #####################################################
 ## PART IIIA. CREATE GLMMS FOR RODENTS AND BURROWS ##
 #####################################################
