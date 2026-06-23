@@ -4,5 +4,5 @@ This github repository shares the code and data needed to reproduce results foun
 
 The main files are as follows:
 
-1. cleaned_data_plus_results_Mar27_2023.csv contains the data used in the analysis. Each row corresponds to an individual sample.
+1. cleaned_data_plus_results_Spr21_to_Spr22.csv contains the data used in the analysis. Each row corresponds to an individual sample.
 2. MainGLMMMediationScript.R is the R code used for the GLMM and the Mediation analysis. It also contains code to reproduce the descriptive results.
