@@ -10,7 +10,7 @@
 ## PART 0. LOAD DATA AND PACKAGES ##
 ####################################
 
-package_list <-c("ggplot2", "dplyr", "paletteer", "mice", "lme4", 
+package_list <-c("ggplot2", "dplyr", "paletteer", "mice", "lme4", "tidyr",
                  "stargazer", "table1", "stringr", "doParallel", "foreach", 
                  "here", "weathermetrics", "cowplot")
 if (!require("pacman")) install.packages("pacman")
@@ -18,7 +18,7 @@ pacman::p_load(package_list, character.only=TRUE)
 
 # Load the data
 setwd(here())
-dat <- read.csv("cleaned_data_plus_results_Mar27_2023.csv")
+dat <- read.csv("Cleaned_data_plus_results_Spr21_to_Spr22.csv")
 
 #################################
 ## PART I. DESCRIPTIVE RESULTS ##
@@ -34,32 +34,71 @@ prev_by_trtmnt <- dat %>% group_by(factorial) %>% summarize(n = sum(!is.na(posit
                                                      count = sum(positive == 1, na.rm = T), 
                                                      percent = mean(positive, na.rm = T))
 
-prev_by_season <- dat %>% group_by(season) %>% summarize(n = sum(!is.na(positive)),
+prev_by_season <- dat %>% group_by(seasonYear) %>% summarize(n = sum(!is.na(positive)),
                                                    count = sum(positive == 1, na.rm = T), 
                                                    percent = mean(positive, na.rm = T))
 
-prev_by_trt_ssn <- dat %>% group_by(factorial, season) %>% summarize(n = sum(!is.na(positive)),
+prev_by_trt_ssn <- dat %>% group_by(factorial, seasonYear) %>% summarize(n = sum(!is.na(positive)),
                                                               count = sum(positive == 1, na.rm = T), 
                                                               percent = mean(positive, na.rm = T))
 
 
 ## Make a table 1 style table using the table1 package
-table1 <- table1( ~ factorial | season,
+dat$seasonYear <- factor(dat$seasonYear, levels = c("Spring_2021", "Summer_2021", "Fall_2021", "Spring_2022"))
+table1 <- table1( ~ factorial | seasonYear,
                   data = dat)
 
 table1
 
-## Make a barplot of overall positive rates
-ggplot(prev_by_trtmnt) + 
-  geom_bar(aes(x = factorial, y = percent*100), stat = "identity", fill = "darkcyan") +
-  theme_bw() + xlab("") + ylab("Percent of samples with Coccidioides") +
-  theme(text = element_text(size = 18))
+## Make Figure 3, overall prevalence by factor and season ###
+df <- dat %>% group_by(factorial, seasonYear) %>% 
+  summarize(positive = sum(positive, na.rm = T), total = n())
 
-#ggsave("PercentSamples.jpg", width = 6, height = 5)
+df <- df %>%
+  mutate(
+    sample = ifelse(str_detect(factorial, "S"), "Surface", "Burrow"),
+    rodent = ifelse(str_detect(factorial, "E"), "Rodents excluded", "Rodents present"),
+    seasonYear = gsub("_", " ", seasonYear),
+    seasonYear = factor(
+      seasonYear,
+      levels = c("Spring 2021", "Summer 2021", "Fall 2021", "Spring 2022")
+    ),
+    percent_positive = 100 * positive / total
+  ) %>%
+  rowwise() %>%
+  mutate(
+    ci_low = 100 * binom.test(positive, total)$conf.int[1],
+    ci_high = 100 * binom.test(positive, total)$conf.int[2]
+  ) %>%
+  ungroup()
+
+## Creat the plot
+ggplot(df, aes(x = factorial, y = percent_positive,
+               color = seasonYear, group = seasonYear, shape = factorial)) +
+  geom_point(size = 3, position = position_dodge(width = 0.35)) +
+  geom_errorbar(aes(ymin = ci_low, ymax = ci_high), width = 0.1, position = position_dodge(width = 0.35)) +
+  labs(
+    x = NULL,
+    y = "Positive samples (%)",
+    color = "Season"
+  ) +
+  guides(shape = "none") +
+  scale_shape_manual("", values = c(19,15,1,0), breaks = c("SE", "SN", "PE", "PN")) +
+  scale_fill_manual("Season", values = c("darkcyan", "olivedrab", "palevioletred", "cornflowerblue"), breaks = unique(df$seasonYear)) +
+  scale_color_manual("Season", values = c("darkcyan", "olivedrab", "palevioletred", "cornflowerblue"), breaks = unique(df$seasonYear)) +
+  theme_bw(base_size = 13) +
+  theme(
+    legend.position = c(0.2, 0.8)
+  ) + scale_x_discrete(breaks=c("SE", "SN", "PE", "PN"),
+                       labels=c("Surface,\n Rodents excluded", "Surface,\n Rodents present",
+                                "Burrow,\n Rodents excluded", "Burrow,\n Rodents present"))
+
+ggsave("Figure3_PercentPositiveSamples.jpg", dpi = 600, height = 6, width = 7)
+
 
 ## Make a barplot of overall positive rates by season
 ggplot(prev_by_trt_ssn) + 
-  geom_bar(aes(x = factorial, y = percent*100, fill = season), 
+  geom_bar(aes(x = factorial, y = percent*100, fill = seasonYear), 
                          stat = "identity", position = "dodge") +
   theme_bw() + xlab("") + ylab("Percent of samples with Coccidioides") +
   theme(text = element_text(size = 18)) +
@@ -67,10 +106,6 @@ ggplot(prev_by_trt_ssn) +
 
 
 ## Supplemental figure
-prev_by_trt_ssn$season2 <- factor(prev_by_trt_ssn$season,
-                        levels = c("Spring", "Summer", "Fall", "April"),
-                        labels = c("Spring '21", "Summer '21", "Fall '21", "Spring '22"))
-
 prev_by_trt_ssn$factorial <- factor(prev_by_trt_ssn$factorial,
                           levels = c("SE", "SN", "PE", "PN"),
                           labels = c("Surface without rodents",
@@ -80,12 +115,12 @@ prev_by_trt_ssn$factorial <- factor(prev_by_trt_ssn$factorial,
 
 ## Make a barplot of overall positive rates by season
 ggplot(prev_by_trt_ssn) + 
-  geom_bar(aes(x = factorial, y = percent*100, fill = season2), 
+  geom_bar(aes(x = factorial, y = percent*100, fill = seasonYear), 
                          stat = "identity", position = "dodge") +
   theme_bw() + xlab("") + ylab("Percent of samples with Coccidioides") +
   theme(text = element_text(size = 18)) +
   scale_fill_paletteer_d(`"awtools::a_palette"`, name = "Season") +
-  facet_wrap(~season2) +
+  facet_wrap(~seasonYear) +
   scale_x_discrete(labels = function(x) str_wrap(x, width = 10))
 
 #ggsave("PercentSamples_bySeason.jpg", width = 12, height = 7)
@@ -146,22 +181,22 @@ missing1 %>% group_by(treatment, exclosure) %>% summarize(mean(vwc,na.rm = T))
 
 # Supplemental figure: boxplot of soil moisture
 
-dat$season2 <- factor(dat$season,
-                      levels = c("Spring", "Summer", "Fall", "April"),
-                      labels = c("Spring '21", "Summer '21", "Fall '21", "Spring '22"))
-
-
 exc.labs <- c("Exclosure", "Non-exclosure")
 names(exc.labs) <- c("E", "N")
 
 ggplot(dat) + 
-  geom_boxplot(aes(x = season2, y = vwc_imp, fill = treatmentX)) + 
-  facet_wrap(~exclosureX, labeller = labeller(exclosureX = exc.labs)) +
+  geom_boxplot(aes(x = seasonYear, y = vwc_imp, fill = treatmentLabel), outlier.shape = NA) + 
+  geom_jitter(aes(x = seasonYear, y = vwc_imp, color = treatmentLabel), 
+              position = position_jitterdodge(jitter.width = 0.25, dodge.width = 0.75),
+              alpha = 0.25) +
+  facet_wrap(~exclosureLabel, labeller = labeller(exclosureLabel = exc.labs)) +
   xlab("") + ylab("Volumetric water content (%)") + theme_bw() +
   theme(legend.position = "top") +
-  scale_fill_brewer("Burrow", palette = "Paired", labels = c("Yes", "No"))
+  scale_fill_brewer("Burrow", palette = "Paired", labels = c("Yes", "No")) +
+  scale_color_manual("Burrow", breaks = c("P", "S"), values = c("grey27", "grey3"), labels = c("Yes", "No")) +
+  scale_x_discrete(labels = c("Spring 2021", "Summer 2021", "Fall 2021", "Spring 2022"))
 
-#ggsave(file = "MoistureComparison_all_sns.jpg", dpi = 250, width = 8, height = 5)
+#ggsave(file = "MoistureComparison_all_sns.jpg", dpi = 250, width = 10, height = 6)
 
 #####################################################
 ## PART IIIA. CREATE GLMMS FOR RODENTS AND BURROWS ##
@@ -170,107 +205,165 @@ ggplot(dat) +
 # relevel
 dat$factorial <- factor(dat$factorial, levels = c("SE", "SN", "PE", "PN"))
 
-# Set April to season (dat)
-dat$season2 <- dat$season
-dat$season2[dat$season == "April"] <- "Spring"
-dat$season <- factor(dat$season, levels = c("Spring", "Summer", "Fall", "April"))
-
 ##### Establish variables for sensitivity analyses -- edit down below #####
 
-# Sensitivity analyses 1 - which exclosures may be breached #
-dat$active_exclosure_repeats <- as.numeric(dat$plot %in% c("C10", "S07"))
-dat$active_exclosure_any <- as.numeric(dat$plot %in% c("C10", "S07", "C08", "C04", "S04"))
+##############################################
 
-# Sensitivity analysis 2 - recode positive #
+##############################################
+## Create a variable for clustering ##
+dat$cluster_pair <- ifelse(dat$site == 1, 
+                              paste0("S", dat$plot_num, dat$exclosure, dat$paired),
+                              paste0("C", dat$plot_num, dat$exclosure, dat$paired))
+
+### Models for Table S2
+
+## 1) Model without soil covariates
+mod1 <- glmer(positive ~ exclosure + treatment + 
+                as.factor(seasonYear) + as.factor(site) +
+                (1|plot_num/cluster_pair), 
+              data = dat, family = "binomial")
+
+summary(mod1)
+exp(fixef(mod1))
+exp(confint(mod1, method = "Wald"))
+
+## 2) Model with soil moisture only
+mod2 <- glmer(positive ~ exclosure + treatment + 
+                as.factor(seasonYear) + as.factor(site) +
+                vwc_imp +
+                (1|plot_num/cluster_pair), 
+              data = dat, family = "binomial")
+
+summary(mod2)
+exp(fixef(mod2))
+exp(confint(mod2, method = "Wald"))
+
+dat$soil_temp_scaled <- dat$soil_temp/10
+
+## 3) Model with all soil covariates
+mod3 <- glmer(positive ~ exclosure + treatment + 
+                as.factor(seasonYear) + as.factor(site) +
+                vwc_imp + soil_temp + as.factor(veg_level) + 
+                (1|plot_num/cluster_pair), 
+              data = dat, family = "binomial")
+
+summary(mod3)
+exp(fixef(mod3))
+exp(confint(mod3, method = "Wald"))
+
+### Make a plot
+points <- exp(fixef(mod3))
+ci <- data.frame(exp(confint(mod3, method = "Wald"))[3:14,])
+
+mod3_table <- cbind(points, ci)
+colnames(mod3_table) <- c("OR", "lci", "uci")
+rownames(mod3_table) <- c("Intercept", "Rodents present", "Burrow", "Summer 2021", "Fall 2021", "Spring 2022", "Southern Pasture",
+                          "Soil moisture", "Soil temperature", "Low", "Medium", "High")
+mod3_table$varname <- rownames(mod3_table)
+mod3_table$varname <- factor(mod3_table$varname, 
+                             levels = c("High", "Medium", "Low",
+                                        "Soil temperature", "Soil moisture",
+                                        "Spring 2022", "Fall 2021", "Summer 2021",
+                                        "Southern Pasture", "Rodents present", "Burrow",  "Intercept"))
+
+ggplot(mod3_table %>% filter(varname != "Intercept")) +
+  geom_point(aes(x = OR, y = varname)) +
+  geom_errorbarh(aes(xmin = lci, xmax = uci, y = varname), height = 0.1) +
+  geom_vline(aes(xintercept = 1), linetype = "dashed") +
+  theme_bw() + xlab("Odds ratio") + ylab("")
+
+### Is positivity in burrows correlated with positivity in surface soils? ###
+dat$clusterBC_new <- gsub("P", "", dat$clusterBC)
+dat$clusterBC_new <- gsub("SN", "N", dat$clusterBC_new)
+dat$clusterBC_new <- gsub("SE", "E", dat$clusterBC_new)
+dat$clusterBC_new <- paste0(dat$seasonYear, dat$clusterBC_new)
+
+# aggregate
+agg <- dat %>% group_by(clusterBC_new, treatmentLabel) %>%
+  summarize(numPos = sum(positive))
+# make wide
+agg_wide <- pivot_wider(agg, names_from = "treatmentLabel", values_from = "numPos") %>% filter(!is.na(S) & !is.na(P))
+cor(agg_wide$S, agg_wide$P)
+cor.test(agg_wide$S, agg_wide$P, method = "pearson")
+
+###### Sensitivity analyses ######
+
+# SA1: only one CT value needed for positive determination
 dat$positive_1of4 <- as.numeric(dat$Ct_detects >= 1)
+
+mod1_SA1 <- glmer(positive_1of4 ~ exclosure + treatment + 
+                    as.factor(seasonYear) + as.factor(site) +
+                    (1|plot_num/cluster_pair), 
+                  data = dat, family = "binomial")
+
+summary(mod1_SA1)
+exp(fixef(mod1_SA1))
+exp(confint(mod1_SA1, method = "Wald"))
+
+mod3_SA1 <- glmer(positive_1of4 ~ exclosure + treatment + 
+                    as.factor(seasonYear) + as.factor(site) +
+                    vwc_imp + soil_temp + as.factor(veg_level) + 
+                    (1|plot_num/cluster_pair), 
+                  data = dat, family = "binomial")
+
+summary(mod3_SA1)
+exp(fixef(mod3_SA1))
+exp(confint(mod3_SA1, method = "Wald"))
+
+# SA2: only two CT values needed for positive determination
 dat$positive_2of4 <- as.numeric(dat$Ct_detects >= 2)
-dat$positive_4of4 <- as.numeric(dat$Ct_detects >= 4)
 
-##############################################
-#### EDIT HERE FOR SENSITIVITY ANALYSES ######
-dat_orig <- dat
+mod1_SA2 <- glmer(positive_2of4 ~ exclosure + treatment + 
+                    as.factor(seasonYear) + as.factor(site) +
+                    (1|plot_num/cluster_pair), 
+                  data = dat, family = "binomial")
 
-## Options for sensitivity analysis - comment out for main analysis
-# dat <- dat %>% subset(active_exclosure_repeats != 1)
-# dat <- dat %>% subset(active_exclosure_any != 1)
-# dat$positive <- dat$positive_1of4
-# dat$positive <- dat$positive_2of4
-# dat$positive <- dat$positive_4of4
+summary(mod1_SA2)
+exp(fixef(mod1_SA2))
+exp(confint(mod1_SA2, method = "Wald"))
 
-dat <- dat_orig ## reset
+mod3_SA2 <- glmer(positive_2of4 ~ exclosure + treatment + 
+                    as.factor(seasonYear) + as.factor(site) +
+                    vwc_imp + soil_temp + as.factor(veg_level) + 
+                    (1|plot_num/cluster_pair), 
+                  data = dat, family = "binomial")
 
-##############################################
+summary(mod3_SA2)
+exp(fixef(mod3_SA2))
+exp(confint(mod3_SA2, method = "Wald"))
 
-##############################################
+# SA3: Exclude plots with breached exclosures
+dat$active_exclosure_repeats <- as.numeric(dat$plot %in% c("C10", "S07"))
+dat_subset <- dat %>% filter(active_exclosure_repeats != 1)
 
-# Make a GLMM, adjusting for various factors
-mod_unadj_noint <-  glmer(positive ~ season + site + 
-                            exclosure + treatment + (1|plot_num/cluster_pair), 
-                          data = dat, family = "binomial")
+mod1_SA3 <- glmer(positive ~ exclosure + treatment + 
+                    as.factor(seasonYear) + as.factor(site) +
+                    (1|plot_num/cluster_pair), 
+                  data = dat_subset, family = "binomial")
 
-summary(mod_unadj_noint)
+summary(mod1_SA3)
+exp(fixef(mod1_SA3))
+exp(confint(mod1_SA3, method = "Wald"))
 
-mod_adj_noint <- glmer(positive ~ vwc_imp + season + site + 
-                         exclosure + treatment + (1|plot_num/cluster_pair), 
-                       data = dat, family = "binomial")
+mod3_SA3 <- glmer(positive ~ exclosure + treatment + 
+                    as.factor(seasonYear) + as.factor(site) +
+                    vwc_imp + soil_temp + as.factor(veg_level) + 
+                    (1|plot_num/cluster_pair), 
+                  data = dat_subset, family = "binomial")
 
-summary(mod_adj_noint)
-
-# Make a nice table of results -- it will save as html output
-stargazer(mod_unadj_noint, mod_adj_noint, align = T, ci = T, apply.coef = exp, p.auto = F,
-          order = c(5,6,2,3,4,1,7),
-          column.labels = c("Model A", "Model B"),
-          covariate.labels = c("Rodents present (ref: absent)", 
-                               "Burrow (ref: surface)", 
-                               "Summer 2021 (ref: dat 2021)",
-                               "Fall 2021 (ref: dat 2021)",
-                               "dat 2022 (ref: dat 2021)",
-                               "Volumetric water content (%)", 
-                               "Intercept"),
-          dep.var.labels = "OR (95% CI)",
-          dep.var.caption = "Presence of \\textit{Coccidioides} in soils",
-          out="models.htm")
+summary(mod3_SA3)
+exp(fixef(mod3_SA3))
+exp(confint(mod3_SA3, method = "Wald"))
 
 #####################################################
-## PART IIIB. CREATE GLMMS FOR SOIL CONDITIONS     ##
+## PART IIIB. EXMAINE DIFFERENCES IN SOIL CONDITIONS  
 #####################################################
-
-# soil moisture
-mod_vwc <-lmer(vwc_imp ~ season + 
-                          exclosure + treatment + (1|plot_num/cluster_pair), 
-                          data = dat)
-
-summary(mod_vwc)
-confint(mod_vwc)
-
-
-# ordinal soil level
-mod_veg <-lmer(veg_level ~ season + 
-                   exclosure + treatment + (1|plot_num/cluster_pair), 
-                 data = dat)
-
-summary(mod_veg)
-confint(mod_veg)
-
-# soil temperature
-mod_tmp <- lmer(soil_tempC~ season + 
-                   exclosure + treatment + (1|plot_num/cluster_pair), 
-                 data = dat)
-
-summary(mod_tmp)
-confint(mod_tmp)
 
 # Summarize all values
-dat %>% group_by(season2, factorial) %>% 
+dat %>% group_by(seasonYear, factorial) %>% 
   summarize(mean_vwc = mean(vwc_imp),
             mean_temp = mean(soil_temp),
             mean_veg = mean(veg_level, na.rm = T))
-
-
-sc_table <- table1( ~ vwc_imp + soil_tempC + veg_level | season2 * factorial ,
-                  data = dat)
-
-sc_table
 
 
 #################################################
@@ -282,18 +375,39 @@ sc_table
 ##  See Arah and Wang, 2015 for more details   ##
 #################################################
 
-# Step 0. Define key variables
+### STEP 0. DEFINE THE HELPER FUNCTIONS ###
+
+## HELPER FUNCTION 1: simulate Y given A, M and other covariates
+get_y <- function(Xvar, Mvar, boot_data, Ymodel, binom = T){
+  pred_df <- boot_data[,c("vwc_imp", "soil_temp", "veg_level", "site", "seasonYear", Xvar, Mvar)]
+  colnames(pred_df) <- c("vwc_imp", "soil_temp", "veg_level", "site", "seasonYear", "A", "M")
+  
+  pred_df$Y <- predict(Ymodel, pred_df, re.form = NA)
+  
+  #get the SD 
+  mm <- model.matrix(terms(Ymodel),pred_df)
+  pvar1 <- sqrt(diag(mm %*% tcrossprod(vcov(Ymodel),mm)))
+  
+  vals <- pmin(rnorm(n, mean = pred_df$Y, sd = pvar1), 0) 
+  
+  if (binom == T){
+    vals <- rbinom(n = n, size = 1, prob = exp(vals))
+  }
+  
+  return(vals)
+}
+
+# STEP 1. DEFINE KEY VARIABLES
 # A is the main effect (rodents, exclosure == 1)
 # M is the mediator (burrows, treatment == 1)
 # Y is the outcome (Coccidioides, positive == 1)
+# covariates adjusts for other soil conditions
 
+covariates = T
 dat$A <- dat$exclosure
 dat$M <- dat$treatment
 dat$Y <- dat$positive
 dat_full <- dat %>% subset(!is.na(Y))
-
-#Any subsetting by season done here -- comment out for full analysis
-# dat_full <- dat_full %>% subset(season == "April")
 
 #Step 1a: obtain appropriate distribution of each variable
 P.X <- mean(dat_full$A)
@@ -303,56 +417,32 @@ alpha0 <- 0 #when A is 0, M is 0
 alpha1 <- 0.5 # when A is 1, M is 0.6 (60% chance of being a 1)
 RMSE.M <- 0.1
 
-#Step 1c: Chose which model to run! Don't run them both!
+#Step 1c: Model outcome on A, M and relevant covariates
+if(covariates == F){
+  
+  E.Y <- glmer(Y ~ A + M + as.factor(seasonYear) + as.factor(site) + (1|plot_num/cluster_pair), 
+               data = dat_full, family = "binomial")
+  
+} else if(covariates == T){
+  
+  E.Y <- glmer(Y ~ vwc_imp + soil_temp + veg_level + as.factor(site) + as.factor(seasonYear) +
+                 A + M + (1|plot_num/cluster_pair), 
+               data = dat_full, family = "binomial")
+  
+}
 
-# Model 1. Model outcome on A, M 
-E.Y <- glmer(Y ~ season + A + M + (1|plot_num/cluster_pair), data = dat_full, family = "binomial")
-
-# Model 2 -- including other variables
-E.Y <- glmer(Y ~ vwc_imp + season + A + M + (1|plot_num/cluster_pair), 
-             data = dat_full, family = "binomial")
 
 coefs <- fixef(E.Y)
 
-#Step 2a. Create J copies of the original sample
+### STEP 3. RUN MEDIATION ANALYSIS
 
-ncopies <- 1
-Copy <- dat_full
 
-for (rep in 2:ncopies){
-  Copy <- rbind(Copy, dat_full) 
-}
-
-plots <- unique(paste0(dat_full$plot)) # get unique Carrizo plots
+## Set up the bootstrap
+plots <- unique(paste0(dat_full$plot)) # get unique Carrizo plots for sampling
 nboot <- 1000 # number of bootstrap iterations
 
-# a function to predict Y's
-get_y <- function(Xvar,Mvar, binom = T){ 
-  
-  # Recreate dataset for prediction
-  pred_df <- boot.df[,c("vwc_imp", "season", Xvar, Mvar)]
-  colnames(pred_df) <- c("vwc_imp", "season", "A", "M")
-  
-  # First, we predict the mean of Y, then we get the SD, then we resample, accounting for the SD
-  # Predict the mean of Y
-  pred_df$Y <- predict(E.Y, pred_df, re.form = NA)
-  
-  # Get the SD 
-  mm <- model.matrix(terms(E.Y),pred_df)
-  pvar1 <- sqrt(diag(mm %*% tcrossprod(vcov(E.Y),mm)))
-  
-  # Sample from normal distribution, with mean as given and sd as found
-  vals <- pmin(rnorm(n, mean = pred_df$Y, sd = pvar1), 0) ##??why are some > 0?
-  
-  # Sample from binomial distribution with prob of success equal to the mean probability
-  if (binom == T){
-    vals <- rbinom(n = n, size = 1, prob = exp(vals))
-  }
-  
-  return(vals)
-}
 
-# set up parallel computing
+## Set up parallel computing
 numCore <- detectCores() - 1
 cl <- makeCluster(numCore)
 registerDoParallel(cl)
@@ -362,19 +452,19 @@ res <- foreach (i = 1:nboot, .combine = rbind,
                 .packages = c('dplyr', 'lme4')) %dopar% {
                   
                   # create a boostrapped dataframe, boot.df
-                  boot.df <- dat_full %>% subset(positive == 20) #empty dataframe with same structure as spring_full
+                  boot.df <- dat_full %>% subset(positive == 20) #empty dataframe with same structure as dat_full
                   
                   # Bootstrapped samples must obey clustering - so drawing based on plots
                   
                   # Sample the plots 20 times, with replacement
-                  boot_samp <- sample(plots, 20*ncopies, replace = T)
+                  boot_samp <- sample(plots, 20, replace = T)
                   plots_samp <- sort(unique(boot_samp)) # the plots sampled
                   boot_table <- table(boot_samp) # a table of how often each plot was sampled
                   pn <- length(plots_samp) # the number of unique plots sampled
                   
                   # A loop to recreated the dataframe, by appending the dataset sampled plot at a time
                   for (p in 1:pn){
-                    boot_df_i <- subset(Copy, plotBC == plots[p])
+                    boot_df_i <- subset(dat_full, plotBC == plots[p])
                     plot_n <- boot_table[p]
                     
                     k <- 1
@@ -398,13 +488,12 @@ res <- foreach (i = 1:nboot, .combine = rbind,
                   boot.df$M1 <- rbinom(n, 1, P.M1)
                   boot.df$M0 <- rbinom(n, 1, alpha0)
                   
-                  #Step 2d. simulate a Y for each type of effect as a function of its parents
-                  
-                  boot.df$Y_TE <- get_y("X", "Mx", binom = T)
-                  boot.df$Y_PDE <- get_y("X", "M0", binom = T)
-                  boot.df$Y_TIE <- get_y("X1", "Mx", binom = T)
-                  boot.df$Y_TDE <- get_y("X", "M1", binom = T)
-                  boot.df$Y_PIE <- get_y("X0", "Mx", binom = T)
+                  #Step 2d. simulate a Y for each type of effect as a function of its parents using the get_y() function
+                  boot.df$Y_TE <- get_y("X", "Mx", boot.df, E.Y, binom = T)
+                  boot.df$Y_PDE <- get_y("X", "M0", boot.df, E.Y, binom = T)
+                  boot.df$Y_TIE <- get_y("X1", "Mx", boot.df, E.Y, binom = T)
+                  boot.df$Y_TDE <- get_y("X", "M1", boot.df, E.Y, binom = T)
+                  boot.df$Y_PIE <- get_y("X0", "Mx", boot.df, E.Y, binom = T)
                   
                   
                   #Step 3. Regress each potential health outcome against X
@@ -451,9 +540,6 @@ dat$M <- dat$vwc_imp
 dat$Y <- dat$positive
 dat_full <- dat %>% subset(!is.na(Y))
 
-#Any subsetting by season done here -- comment out for full analysis
-# dat_full <- dat_full %>% subset(season == "April")
-
 #Step 1a: obtain appropriate distribution of each variable
 P.X <- mean(dat_full$A)
 
@@ -472,18 +558,6 @@ E.Y <- glmer(Y ~ exclosure + season + A + M + (1|plot_num/cluster_pair),
              data = dat_full, family = "binomial")
 
 coefsY <- fixef(E.Y)
-
-#Step 2a. Create J copies of the original sample
-
-ncopies <- 1
-Copy <- dat_full
-
-for (rep in 2:ncopies){
-  Copy <- rbind(Copy, dat_full) 
-}
-
-plots <- unique(paste0(dat_full$plot)) # get unique Carrizo plots
-nboot <- 1000 # number of bootstrap iterations
 
 # a function to predict Y's -- do need to repeat from above
 get_y <- function(Xvar,Mvar, binom = T){ 
@@ -537,6 +611,10 @@ get_m <- function(Xvar, binom = F){
   return(vals)
 }
 
+# set up bootstrapping
+plots <- unique(paste0(dat_full$plot)) # get unique Carrizo plots
+nboot <- 1000 # number of bootstrap iterations
+
 # set up parallel computing
 numCore <- detectCores() - 1
 cl <- makeCluster(numCore)
@@ -559,7 +637,7 @@ res <- foreach (i = 1:nboot, .combine = rbind,
                   
                   # A loop to recreated the dataframe, by appending the dataset sampled plot at a time
                   for (p in 1:pn){
-                    boot_df_i <- subset(Copy, plotBC == plots[p])
+                    boot_df_i <- subset(dat_full, plotBC == plots[p])
                     plot_n <- boot_table[p]
                     
                     k <- 1
@@ -619,7 +697,7 @@ quantile(res[,3]/(res[,3] + res[,4])*100, probs = c(0.025, 0.5, 0.975), na.rm = 
 #### SUPPLEMENT: CLUSTERING OF POSITIVE SAMPLES ####
 ####################################################
 clusters <- dat %>% 
-  group_by(cluster, season) %>% 
+  group_by(cluster, seasonYear) %>% 
   summarize(tot_pos = sum(positive)) %>%
   mutate(factorial = substr(cluster, 4,5))
 
@@ -639,7 +717,7 @@ PE <- ggplot(clusters %>% subset(factorial == "PE")) +
   xlab("Samples per cluster of five positive") + ylab("Density") +
   scale_fill_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
   scale_color_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
-  guides(color = F, fill = F) +
+  guides(color = "none", fill = "none") +
   ggtitle("Burrow + no rodents")
 
 PN <- ggplot(clusters %>% subset(factorial == "PN")) +
@@ -651,7 +729,7 @@ PN <- ggplot(clusters %>% subset(factorial == "PN")) +
   xlab("Samples per cluster of five positive") + ylab("Density") +
   scale_fill_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
   scale_color_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
-  guides(color = F) +
+  guides(color = "none") +
   ggtitle("Burrow + rodents")
 
 SE <- ggplot(clusters %>% subset(factorial == "SE")) +
@@ -664,7 +742,7 @@ SE <- ggplot(clusters %>% subset(factorial == "SE")) +
   xlab("Samples per cluster of five positive") + ylab("Density") +
   scale_fill_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
   scale_color_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
-  guides(color = F, fill = F) +
+  guides(color = "none", fill = "none") +
   ggtitle("Surface + no rodents")
 
 SN <- ggplot(clusters %>% subset(factorial == "SN")) +
@@ -677,7 +755,7 @@ SN <- ggplot(clusters %>% subset(factorial == "SN")) +
   xlab("Samples per cluster of five positive") + ylab("Density") +
   scale_fill_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
   scale_color_manual("Distribution", breaks = c("observed", "random"), values = c("coral", "deepskyblue1")) +
-  guides(color = F) +
+  guides(color = "none") +
   ggtitle("Surface + rodents")
 
 ggdraw() +
