@@ -6,3 +6,5 @@ The main files are as follows:
 
 1. cleaned_data_plus_results_Spr21_to_Spr22.csv contains the data used in the analysis. Each row corresponds to an individual sample.
 2. MainGLMMMediationScript.R is the R code used for the GLMM and the Mediation analysis. It also contains code to reproduce the descriptive results.
+
+Zenodo URL: https://doi.org/10.5281/zenodo.23455804
